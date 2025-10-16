@@ -12,6 +12,7 @@
       text-align: center;
       margin: 0;
       padding: 0;
+      min-height: 100vh; /* Pastikan body setidaknya setinggi viewport */
     }
     h1 {
       color: gold;
@@ -40,15 +41,15 @@
       color: black;
       box-shadow: 0 0 10px gold;
     }
-    canvas {
+    /* KANVAS TUNGGAL: Awalnya disembunyikan di JS, tapi atur pemusatan di CSS */
+    #mainGameCanvas { 
       background: #000;
-      display: block !important;
+      display: none; /* Disembunyikan di sini, akan ditampilkan via JS */
       margin-left: auto;
       margin-right: auto;
       margin-top: 20px;
       border: 2px solid gold;
       box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
-      /* Note: display: none di JS akan menimpa ini saat tidak aktif */
     }
     #backBtn {
       display: none;
@@ -60,7 +61,6 @@
         color: white;
         box-shadow: 0 0 10px darkred;
     }
-    /* STYLE UNTUK GAME OVER & RESTART BARU */
     .game-status {
         display: none; /* Sembunyikan secara default */
         margin-top: 10px;
@@ -74,6 +74,19 @@
         color: white;
         box-shadow: none;
     }
+    .game-over-overlay {
+        position: absolute; /* Posisi relatif terhadap body */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(0, 0, 0, 0.7); /* Transparan gelap */
+        z-index: 10;
+    }
   </style>
 </head>
 <body>
@@ -81,144 +94,145 @@
   <div class="menu">
     <button onclick="startGame('snake')">🐍 Game Ular</button>
     <button onclick="startGame('breakout')">🧱 Game Breakout</button>
-    <button onclick="startGame('shooter')">✈️ Game Tembak Pesawat</button>
+    <button onclick="startGame('pong')">🎾 Game Pong</button>
   </div>
   <button id="backBtn" onclick="goBack()">⬅ Kembali ke Menu</button>
 
-  <canvas id="snakeGame" width="400" height="400"></canvas>
-  <div id="snakeStatus" class="game-status">
-    <p>Skor: <span id="snakeScoreDisplay">0</span></p>
-    <div id="snakeGameOver" style="display: none;">
-      <h2>GAME OVER!</h2>
-      <button onclick="startGame('snake')">🔁 Restart</button>
-      <button onclick="goBack()">🏠 Keluar Game</button>
+  <canvas id="mainGameCanvas" width="400" height="400"></canvas>
+  
+  <div id="gameStatusArea" class="game-status">
+    <p id="liveScoreDisplay"></p>
+    <div id="gameOverOverlay" class="game-over-overlay">
+      <h2 id="gameOverMessage" style="color: gold; margin-bottom: 20px;"></h2>
+      <button onclick="restartGame()">🔁 Restart</button>
+      <button onclick="goBack()" style="background: crimson;">🏠 Keluar Game</button>
     </div>
   </div>
 
-  <canvas id="breakoutGame" width="480" height="320"></canvas>
-  <div id="breakoutStatus" class="game-status">
-    <div id="breakoutGameOver" style="display: none;">
-      <h2>GAME OVER!</h2>
-      <button onclick="startGame('breakout')">🔁 Restart</button>
-      <button onclick="goBack()">🏠 Keluar Game</button>
-    </div>
-  </div>
-
-  <canvas id="shooterGame" width="400" height="600"></canvas>
-  <div id="shooterStatus" class="game-status">
-    <div id="shooterGameOver" style="display: none;">
-      <h2>GAME OVER!</h2>
-      <button onclick="startGame('shooter')">🔁 Restart</button>
-      <button onclick="goBack()">🏠 Keluar Game</button>
-    </div>
-  </div>
 
   <script>
     // =======================
-    // Fungsi umum & Elemen Status
+    // FUNGSI UMUM DAN PENGATURAN
     // =======================
     const menu = document.querySelector('.menu');
     const backBtn = document.getElementById('backBtn');
+    const mainCanvas = document.getElementById('mainGameCanvas');
+    const ctx = mainCanvas.getContext('2d');
+    
+    // Elemen Status
+    const gameStatusArea = document.getElementById('gameStatusArea');
+    const liveScoreDisplay = document.getElementById('liveScoreDisplay');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const gameOverMessage = document.getElementById('gameOverMessage');
+
     let gameLoop = null;
     let activeGame = null;
 
-    // Elemen Status/Score/GameOver
-    const gameStatuses = {
-        snake: { status: document.getElementById('snakeStatus'), over: document.getElementById('snakeGameOver'), scoreDisplay: document.getElementById('snakeScoreDisplay') },
-        breakout: { status: document.getElementById('breakoutStatus'), over: document.getElementById('breakoutGameOver') },
-        shooter: { status: document.getElementById('shooterStatus'), over: document.getElementById('shooterGameOver') }
-    };
-
-    // Handler untuk event listener, didefinisikan secara global
+    // Handler untuk event listener (Didefinisikan secara global)
     const snakeDirHandler = (e) => snakeDir(e);
     const breakoutMouseMoveHandler = (e) => breakoutMouseMove(e);
-    const shooterKeyDownHandler = (e) => shooterKeyDown(e);
-    const shooterKeyUpHandler = (e) => shooterKeyUp(e);
+    const pongMouseMoveHandler = (e) => pongMouseMove(e); // Handler baru untuk Pong
+
+    function setCanvasSize(width, height) {
+        mainCanvas.width = width;
+        mainCanvas.height = height;
+        // Posisikan overlay Game Over agar relatif terhadap canvas
+        gameStatusArea.style.width = width + 'px';
+        gameStatusArea.style.margin = '0 auto';
+        
+        // Posisikan overlay agar menutupi canvas
+        const canvasRect = mainCanvas.getBoundingClientRect();
+        gameOverOverlay.style.position = 'absolute';
+        gameOverOverlay.style.left = canvasRect.left + 'px';
+        gameOverOverlay.style.top = canvasRect.top + 'px';
+        gameOverOverlay.style.height = canvasRect.height + 'px';
+        gameOverOverlay.style.width = canvasRect.width + 'px';
+    }
 
     function startGame(game) {
       if (activeGame) stopActiveGame(); 
-      hideAllCanvas();
-      hideAllStatus(); // Pastikan semua status disembunyikan
+      hideElements();
       
       menu.style.display = 'none';
       backBtn.style.display = 'inline-block';
+      mainCanvas.style.display = 'block';
+      gameStatusArea.style.display = 'block';
       activeGame = game;
       
-      if (game === 'snake') startSnake();
-      else if (game === 'breakout') startBreakout();
-      else if (game === 'shooter') startShooter();
+      // Mengatur ukuran canvas sebelum memulai game
+      if (game === 'snake') {
+        setCanvasSize(400, 400);
+        startSnake();
+      } else if (game === 'breakout') {
+        setCanvasSize(480, 320);
+        startBreakout();
+      } else if (game === 'pong') {
+        setCanvasSize(600, 400); // Ukuran custom untuk Pong
+        startPong();
+      }
+    }
+    
+    function restartGame() {
+        if (activeGame) startGame(activeGame); // Memulai game yang sama lagi
     }
 
     function goBack() {
       stopActiveGame();
-      hideAllCanvas();
-      hideAllStatus();
+      hideElements();
       menu.style.display = 'flex';
       backBtn.style.display = 'none';
       activeGame = null;
     }
     
     function stopActiveGame(isGameOver = false, message = null) {
-        if (activeGame === 'snake') {
-            clearInterval(gameLoop);
-            window.removeEventListener('keydown', snakeDirHandler);
-        } else if (activeGame === 'breakout' || activeGame === 'shooter') {
-            cancelAnimationFrame(gameLoop); 
-            if (activeGame === 'breakout') {
-                document.removeEventListener('mousemove', breakoutMouseMoveHandler);
-            } else if (activeGame === 'shooter') {
-                document.removeEventListener('keydown', shooterKeyDownHandler);
-                document.removeEventListener('keyup', shooterKeyUpHandler);
-            }
-        }
+        // Hentikan Loop
+        if (activeGame === 'snake') { clearInterval(gameLoop); } 
+        else if (activeGame === 'breakout' || activeGame === 'pong') { cancelAnimationFrame(gameLoop); } 
+        
+        // Hapus Event Listeners
+        window.removeEventListener('keydown', snakeDirHandler);
+        document.removeEventListener('mousemove', breakoutMouseMoveHandler);
+        document.removeEventListener('mousemove', pongMouseMoveHandler);
         
         if (isGameOver) {
-             const statusEl = gameStatuses[activeGame];
-             // Tampilkan overlay Game Over dengan pesan
-             statusEl.over.style.display = 'block';
-             if (message) {
-                 statusEl.over.querySelector('h2').textContent = message;
-             }
+             mainCanvas.style.display = 'block'; // Tetap tampilkan canvas
+             gameOverOverlay.style.display = 'flex'; // Tampilkan overlay Game Over
+             gameOverMessage.textContent = message || "GAME OVER!";
+             liveScoreDisplay.style.display = 'none'; // Sembunyikan Live Score saat Game Over
         }
     }
 
-    function hideAllCanvas() {
-      document.querySelectorAll('canvas').forEach(c => c.style.display = 'none');
-    }
-    
-    function hideAllStatus() {
-       document.querySelectorAll('.game-status').forEach(s => s.style.display = 'none');
-       document.querySelectorAll('.game-status > div').forEach(d => d.style.display = 'none'); // Sembunyikan semua pesan Game Over
+    function hideElements() {
+      mainCanvas.style.display = 'none';
+      gameStatusArea.style.display = 'none';
+      gameOverOverlay.style.display = 'none';
     }
 
 
     // =======================
     // GAME 1 : SNAKE 🐍
     // =======================
-    const snakeCanvas = document.getElementById('snakeGame');
-    const snakeCtx = snakeCanvas.getContext('2d');
-    let box, snake, direction, food, snakeScore;
+    let box, snake, direction, snakeScore;
 
     function startSnake() {
-      snakeCanvas.style.display = 'block';
-      gameStatuses.snake.status.style.display = 'block'; // Tampilkan status
-      gameStatuses.snake.over.style.display = 'none'; // Sembunyikan pesan Game Over
-      
+      // Setup Game State
       box = 20;
       snake = [{ x: 9 * box, y: 10 * box }];
       direction = null; 
       snakeScore = 0;
-      gameStatuses.snake.scoreDisplay.textContent = snakeScore; // Reset display score
+      liveScoreDisplay.style.display = 'block';
+      liveScoreDisplay.textContent = `🐍 Score: ${snakeScore}`; 
       placeFood();
       window.addEventListener('keydown', snakeDirHandler);
       gameLoop = setInterval(snakeDraw, 100);
     }
     
     function placeFood() {
+        // ... (Fungsi placeFood Snake tetap sama, menggunakan ctx global) ...
         do {
             food = {
-                x: Math.floor(Math.random() * (snakeCanvas.width / box)) * box,
-                y: Math.floor(Math.random() * (snakeCanvas.height / box)) * box
+                x: Math.floor(Math.random() * (mainCanvas.width / box)) * box,
+                y: Math.floor(Math.random() * (mainCanvas.height / box)) * box
             };
         } while (snakeCollision(food, snake));
     }
@@ -232,20 +246,21 @@
     }
 
     function snakeDraw() {
+      // ... (Logika SnakeDraw menggunakan ctx global) ...
       if (!gameLoop) return; 
 
-      snakeCtx.fillStyle = "#000";
-      snakeCtx.fillRect(0, 0, snakeCanvas.width, snakeCanvas.height);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
 
       for (let i = 0; i < snake.length; i++) {
-        snakeCtx.fillStyle = (i === 0) ? "lime" : "white";
-        snakeCtx.fillRect(snake[i].x, snake[i].y, box, box);
-        snakeCtx.strokeStyle = "#111";
-        snakeCtx.strokeRect(snake[i].x, snake[i].y, box, box);
+        ctx.fillStyle = (i === 0) ? "lime" : "white";
+        ctx.fillRect(snake[i].x, snake[i].y, box, box);
+        ctx.strokeStyle = "#111";
+        ctx.strokeRect(snake[i].x, snake[i].y, box, box);
       }
 
-      snakeCtx.fillStyle = "red";
-      snakeCtx.fillRect(food.x, food.y, box, box);
+      ctx.fillStyle = "red";
+      ctx.fillRect(food.x, food.y, box, box);
 
       let snakeX = snake[0].x;
       let snakeY = snake[0].y;
@@ -259,8 +274,8 @@
 
       if (snakeX === food.x && snakeY === food.y) {
         placeFood();
-        snakeScore++; // Tambah skor
-        gameStatuses.snake.scoreDisplay.textContent = snakeScore; // Update live score
+        snakeScore++;
+        liveScoreDisplay.textContent = `🐍 Score: ${snakeScore}`;
       } else {
         snake.pop();
       }
@@ -268,8 +283,8 @@
       let newHead = { x: snakeX, y: snakeY };
 
       if (
-        snakeX < 0 || snakeX >= snakeCanvas.width ||
-        snakeY < 0 || snakeY >= snakeCanvas.height ||
+        snakeX < 0 || snakeX >= mainCanvas.width ||
+        snakeY < 0 || snakeY >= mainCanvas.height ||
         snakeCollision(newHead, snake)
       ) {
         stopActiveGame(true, `GAME OVER! Skor Akhir: ${snakeScore}`);
@@ -289,20 +304,18 @@
     // =======================
     // GAME 2 : BREAKOUT 🧱
     // =======================
-    const breakoutCanvas = document.getElementById('breakoutGame');
-    const bctx = breakoutCanvas.getContext('2d');
     let ballRadius, x, y, dx, dy, paddleHeight, paddleWidth, paddleX;
     let brickRowCount, brickColumnCount, brickWidth, brickHeight, brickPadding, brickOffsetTop, brickOffsetLeft;
     let bricks = [], breakoutScore;
 
-    // Fungsi untuk menampilkan live score di canvas (karena tidak ada elemen skor terpisah)
     function drawBreakoutScore() {
-        bctx.fillStyle = "#fff";
-        bctx.font = "16px Arial";
-        bctx.fillText("Score: " + breakoutScore, 8, 20);
+        ctx.fillStyle = "#fff";
+        ctx.font = "16px Arial";
+        ctx.fillText("Score: " + breakoutScore, 8, 20);
     }
 
     function initBricks() {
+        // ... (Fungsi initBricks tetap sama) ...
         bricks = [];
         for (let c = 0; c < brickColumnCount; c++) {
             bricks[c] = [];
@@ -313,18 +326,17 @@
     }
 
     function startBreakout() {
-      breakoutCanvas.style.display = 'block';
-      gameStatuses.breakout.status.style.display = 'block';
-      gameStatuses.breakout.over.style.display = 'none';
-      
+      // Setup Game State
+      liveScoreDisplay.style.display = 'none'; // Skor digambar di dalam canvas
+
       ballRadius = 8;
-      x = breakoutCanvas.width / 2;
-      y = breakoutCanvas.height - 30;
+      x = mainCanvas.width / 2;
+      y = mainCanvas.height - 30;
       dx = 2;
       dy = -2;
       paddleHeight = 10;
       paddleWidth = 75;
-      paddleX = (breakoutCanvas.width - paddleWidth) / 2;
+      paddleX = (mainCanvas.width - paddleWidth) / 2;
       breakoutScore = 0;
       
       brickRowCount = 3; 
@@ -342,15 +354,16 @@
     }
 
     function breakoutMouseMove(e) {
-      let relativeX = e.clientX - breakoutCanvas.getBoundingClientRect().left;
-      if (relativeX > 0 && relativeX < breakoutCanvas.width) {
+      let relativeX = e.clientX - mainCanvas.getBoundingClientRect().left;
+      if (relativeX > 0 && relativeX < mainCanvas.width) {
         paddleX = relativeX - paddleWidth / 2;
         if (paddleX < 0) paddleX = 0;
-        if (paddleX > breakoutCanvas.width - paddleWidth) paddleX = breakoutCanvas.width - paddleWidth;
+        if (paddleX > mainCanvas.width - paddleWidth) paddleX = mainCanvas.width - paddleWidth;
       }
     }
 
     function collisionDetection() {
+      // ... (Logika collisionDetection tetap sama) ...
       for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
           let b = bricks[c][r];
@@ -372,7 +385,8 @@
     }
 
     function drawBreakout() {
-      bctx.clearRect(0, 0, breakoutCanvas.width, breakoutCanvas.height);
+      // ... (Logika Draw Breakout menggunakan ctx global) ...
+      ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
       
       for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
@@ -381,34 +395,34 @@
             let brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
             bricks[c][r].x = brickX;
             bricks[c][r].y = brickY;
-            bctx.fillStyle = "gold";
-            bctx.fillRect(brickX, brickY, brickWidth, brickHeight);
+            ctx.fillStyle = "gold";
+            ctx.fillRect(brickX, brickY, brickWidth, brickHeight);
           }
         }
       }
       
       if (collisionDetection()) return;
       
-      bctx.beginPath();
-      bctx.arc(x, y, ballRadius, 0, Math.PI * 2);
-      bctx.fillStyle = "#fff";
-      bctx.fill();
-      bctx.closePath();
+      ctx.beginPath();
+      ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.closePath();
       
-      bctx.fillStyle = "#00f";
-      bctx.fillRect(paddleX, breakoutCanvas.height - paddleHeight, paddleWidth, paddleHeight);
+      ctx.fillStyle = "#00f";
+      ctx.fillRect(paddleX, mainCanvas.height - paddleHeight, paddleWidth, paddleHeight);
       
-      drawBreakoutScore(); // Live score
+      drawBreakoutScore(); 
       
-      if (x + dx > breakoutCanvas.width - ballRadius || x + dx < ballRadius) dx = -dx;
+      if (x + dx > mainCanvas.width - ballRadius || x + dx < ballRadius) dx = -dx;
       if (y + dy < ballRadius) dy = -dy;
       
-      else if (y + dy > breakoutCanvas.height - ballRadius - paddleHeight) {
+      else if (y + dy > mainCanvas.height - ballRadius - paddleHeight) {
         if (x > paddleX && x < paddleX + paddleWidth) {
           let hitPoint = x - (paddleX + paddleWidth / 2);
           dx = hitPoint * 0.1;
           dy = -dy;
-        } else if (y + dy > breakoutCanvas.height - ballRadius) {
+        } else if (y + dy > mainCanvas.height - ballRadius) {
           stopActiveGame(true, `GAME OVER! Skor Akhir: ${breakoutScore}`);
           return;
         }
@@ -420,135 +434,139 @@
     }
 
     // =======================
-    // GAME 3 : SHOOTER ✈️
+    // GAME 3 : PONG 🎾 (Pengganti Shooter)
     // =======================
-    const shooterCanvas = document.getElementById('shooterGame');
-    const sctx = shooterCanvas.getContext('2d');
-    let ship = { x: 180, y: 550, w: 40, h: 20, speed: 5 };
-    let bullets = [];
-    let enemies = [];
-    let rightPressed = false;
-    let leftPressed = false;
-    let shooterScore = 0;
-    let enemySpawnTimer = 0;
-    const ENEMY_SPAWN_RATE = 120;
+    let pongPaddle1Y, pongPaddle2Y, pongBallX, pongBallY, pongBallDX, pongBallDY;
+    let pongPaddleHeight = 70, pongPaddleWidth = 10, pongScore1 = 0, pongScore2 = 0;
+    
+    // Variabel untuk mengontrol paddle pemain 2 (AI)
+    let pongAIPaddleSpeed = 3;
 
-    // Fungsi untuk menampilkan live score di canvas
-    function drawShooterScore() {
-        sctx.fillStyle = "white";
-        sctx.font = "16px Arial";
-        sctx.fillText("Score: " + shooterScore, 10, 20);
+    function startPong() {
+      // Setup Game State
+      liveScoreDisplay.style.display = 'block';
+      liveScoreDisplay.textContent = `🔴 Player 1: 0 - Player 2 (AI): 0 🔵`; 
+      
+      pongPaddle1Y = mainCanvas.height / 2 - pongPaddleHeight / 2; // Pemain Kiri
+      pongPaddle2Y = mainCanvas.height / 2 - pongPaddleHeight / 2; // Pemain Kanan (AI)
+      pongScore1 = 0;
+      pongScore2 = 0;
+      
+      resetBall(); // Posisi bola awal
+      
+      // Event listener: Menggunakan mouse untuk mengontrol paddle kiri
+      document.addEventListener("mousemove", pongMouseMoveHandler);
+      
+      gameLoop = requestAnimationFrame(drawPong);
+    }
+    
+    function resetBall(direction = 1) { // direction: 1=ke kanan, -1=ke kiri
+        pongBallX = mainCanvas.width / 2;
+        pongBallY = mainCanvas.height / 2;
+        pongBallDX = (Math.random() > 0.5 ? 4 : -4) * direction; // Kecepatan horizontal acak
+        pongBallDY = Math.random() * 4 - 2; // Kecepatan vertikal acak antara -2 dan 2
     }
 
-    function spawnEnemy() {
-        enemies.push({ 
-            x: Math.random() * (shooterCanvas.width - 30), 
-            y: -20,
-            w: 30, 
-            h: 20, 
-            speed: 1 + Math.random() * 1.5
-        });
-    }
-
-    function startShooter() {
-      shooterCanvas.style.display = 'block';
-      gameStatuses.shooter.status.style.display = 'block';
-      gameStatuses.shooter.over.style.display = 'none';
-      
-      bullets = [];
-      enemies = [];
-      shooterScore = 0;
-      ship.x = shooterCanvas.width / 2 - ship.w / 2;
-      rightPressed = false;
-      leftPressed = false;
-      enemySpawnTimer = 0;
-      
-      document.addEventListener("keydown", shooterKeyDownHandler);
-      document.addEventListener("keyup", shooterKeyUpHandler);
-      
-      for (let i = 0; i < 5; i++) {
-        spawnEnemy(); 
-      }
-      gameLoop = requestAnimationFrame(drawShooter);
-    }
-
-    function shooterKeyDown(e) {
-      if (e.key === "ArrowRight") rightPressed = true;
-      else if (e.key === "ArrowLeft") leftPressed = true;
-      else if (e.key === " ") {
-        e.preventDefault();
-        if (bullets.length < 5) {
-            bullets.push({ 
-                x: ship.x + ship.w / 2 - 2, 
-                y: ship.y, 
-                w: 4, 
-                h: 10, 
-                speed: 7 
-            });
+    function pongMouseMove(e) {
+        let relativeY = e.clientY - mainCanvas.getBoundingClientRect().top;
+        // Batasi gerakan paddle di dalam canvas
+        if (relativeY > pongPaddleHeight / 2 && relativeY < mainCanvas.height - pongPaddleHeight / 2) {
+            pongPaddle1Y = relativeY - pongPaddleHeight / 2;
         }
-      }
+    }
+    
+    function moveAIPaddle() {
+        // AI sederhana: coba ikuti bola
+        let centerPaddle = pongPaddle2Y + pongPaddleHeight / 2;
+        if (centerPaddle < pongBallY - 10) { // Bola di bawah paddle
+            pongPaddle2Y += pongAIPaddleSpeed;
+        } else if (centerPaddle > pongBallY + 10) { // Bola di atas paddle
+            pongPaddle2Y -= pongAIPaddleSpeed;
+        }
+        // Batasi AI agar tidak keluar batas
+        if (pongPaddle2Y < 0) pongPaddle2Y = 0;
+        if (pongPaddle2Y > mainCanvas.height - pongPaddleHeight) pongPaddle2Y = mainCanvas.height - pongPaddleHeight;
     }
 
-    function shooterKeyUp(e) {
-      if (e.key === "ArrowRight") rightPressed = false;
-      else if (e.key === "ArrowLeft") leftPressed = false;
-    }
+    function drawPong() {
+        ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+        
+        // Background
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+        
+        // Garis tengah
+        ctx.strokeStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(mainCanvas.width / 2, 0);
+        ctx.lineTo(mainCanvas.width / 2, mainCanvas.height);
+        ctx.stroke();
 
-    function drawShooter() {
-      sctx.clearRect(0, 0, shooterCanvas.width, shooterCanvas.height);
-      
-      if (rightPressed && ship.x < shooterCanvas.width - ship.w) ship.x += ship.speed;
-      if (leftPressed && ship.x > 0) ship.x -= ship.speed;
+        // Paddle Pemain 1 (Kiri)
+        ctx.fillStyle = 'red';
+        ctx.fillRect(0, pongPaddle1Y, pongPaddleWidth, pongPaddleHeight);
 
-      sctx.fillStyle = "lime";
-      sctx.fillRect(ship.x, ship.y, ship.w, ship.h);
-      
-      sctx.fillStyle = "yellow";
-      for (let i = bullets.length - 1; i >= 0; i--) {
-          let b = bullets[i];
-          b.y -= b.speed;
-          sctx.fillRect(b.x, b.y, b.w, b.h);
-          if (b.y < 0) {
-              bullets.splice(i, 1);
-          }
-      }
-      
-      sctx.fillStyle = "red";
-      for (let ei = enemies.length - 1; ei >= 0; ei--) {
-          let en = enemies[ei];
-          en.y += en.speed;
-          sctx.fillRect(en.x, en.y, en.w, en.h);
-          
-          for (let bi = bullets.length - 1; bi >= 0; bi--) {
-              let b = bullets[bi];
-              if (b.x < en.x + en.w && b.x + b.w > en.x && b.y < en.y + en.h && b.y + b.h > en.y) {
-                  enemies.splice(ei, 1);
-                  bullets.splice(bi, 1);
-                  shooterScore++;
-                  break; 
-              }
-          }
-          
-          if (en.y > shooterCanvas.height) {
-              stopActiveGame(true, `GAME OVER! Musuh Lolos. Skor Akhir: ${shooterScore}`);
-              return;
-          }
-          
-          if (ship.x < en.x + en.w && ship.x + ship.w > en.x && ship.y < en.y + en.h && ship.y + ship.h > en.y) {
-             stopActiveGame(true, `GAME OVER! Tabrakan. Skor Akhir: ${shooterScore}`);
-              return;
-          }
-      }
-      
-      enemySpawnTimer++;
-      if (enemySpawnTimer >= ENEMY_SPAWN_RATE) {
-          spawnEnemy();
-          enemySpawnTimer = 0;
-      }
-      
-      drawShooterScore(); // Live score
+        // Paddle Pemain 2 (Kanan / AI)
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(mainCanvas.width - pongPaddleWidth, pongPaddle2Y, pongPaddleWidth, pongPaddleHeight);
 
-      gameLoop = requestAnimationFrame(drawShooter);
+        // Pergerakan AI
+        moveAIPaddle();
+        
+        // Bola
+        pongBallX += pongBallDX;
+        pongBallY += pongBallDY;
+        
+        // Pantulan atas/bawah
+        if (pongBallY < 0 || pongBallY > mainCanvas.height) {
+            pongBallDY = -pongBallDY;
+        }
+
+        // Tabrakan dengan Paddle Kiri (Pemain 1)
+        if (pongBallX < pongPaddleWidth && pongBallY > pongPaddle1Y && pongBallY < pongPaddle1Y + pongPaddleHeight) {
+            pongBallDX = -pongBallDX; // Balik arah X
+            // Tambahkan sedikit efek pantulan vertikal
+            pongBallDY = (pongBallY - (pongPaddle1Y + pongPaddleHeight / 2)) * 0.15;
+            pongBallDX *= 1.05; // Sedikit percepatan
+        }
+        
+        // Tabrakan dengan Paddle Kanan (Pemain 2/AI)
+        if (pongBallX > mainCanvas.width - pongPaddleWidth && pongBallY > pongPaddle2Y && pongBallY < pongPaddle2Y + pongPaddleHeight) {
+            pongBallDX = -pongBallDX;
+            pongBallDY = (pongBallY - (pongPaddle2Y + pongPaddleHeight / 2)) * 0.15;
+            pongBallDX *= 1.05; // Sedikit percepatan
+        }
+
+        // Bola Keluar Kiri (Pemain 2 Mencetak Skor)
+        if (pongBallX < 0) {
+            pongScore2++;
+            liveScoreDisplay.textContent = `🔴 Player 1: ${pongScore1} - Player 2 (AI): ${pongScore2} 🔵`;
+            if (pongScore2 >= 5) {
+                stopActiveGame(true, `PLAYER 2 (AI) MENANG! Skor: ${pongScore1} - ${pongScore2}`);
+                return;
+            }
+            resetBall(-1); // Mulai bola ke arah pemain 1
+        }
+        
+        // Bola Keluar Kanan (Pemain 1 Mencetak Skor)
+        if (pongBallX > mainCanvas.width) {
+            pongScore1++;
+            liveScoreDisplay.textContent = `🔴 Player 1: ${pongScore1} - Player 2 (AI): ${pongScore2} 🔵`;
+            if (pongScore1 >= 5) {
+                stopActiveGame(true, `SELAMAT! KAMU MENANG! Skor: ${pongScore1} - ${pongScore2}`);
+                return;
+            }
+            resetBall(1); // Mulai bola ke arah pemain 2
+        }
+
+        // Gambar Bola
+        ctx.beginPath();
+        ctx.arc(pongBallX, pongBallY, 8, 0, Math.PI * 2, false);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.closePath();
+        
+        gameLoop = requestAnimationFrame(drawPong);
     }
   </script>
 </body>
