@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Arcade by Arief 😎</title>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      color: gold;
+      margin-top: 20px;
+    }
+    .menu {
+      margin: 20px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      background: #333;
+      color: white;
+      transition: 0.3s;
+      border-radius: 8px;
+      min-width: 150px;
+    }
+    button:hover {
+      background: gold;
+      color: black;
+      box-shadow: 0 0 10px gold;
+    }
+    /* PERBAIKAN UTAMA DI SINI */
+    canvas {
+      background: #000;
+      display: none; /* Awalnya disembunyikan */
+      margin-top: 20px;
+      border: 2px solid gold;
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+      
+      /* Tambahan untuk pemusatan: */
+      display: block !important; /* Wajib diatur ulang ke 'block' */
+      margin-left: auto;        /* Pusatkan secara horizontal */
+      margin-right: auto;       /* Pusatkan secara horizontal */
+      
+      /* Catatan: 'display: none' di JavaScript akan menimpa ini saat tidak aktif */
+    }
+    #backBtn {
+      display: none;
+      margin-top: 20px;
+      background: crimson;
+    }
+    #backBtn:hover {
+        background: darkred;
+        color: white;
+        box-shadow: 0 0 10px darkred;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 Mini Arcade</h1>
+  <div class="menu">
+    <button onclick="startGame('snake')">🐍 Game Ular</button>
+    <button onclick="startGame('breakout')">🧱 Game Breakout</button>
+    <button onclick="startGame('shooter')">✈️ Game Tembak Pesawat</button>
+  </div>
+  <button id="backBtn" onclick="goBack()">⬅ Kembali ke Menu</button>
+
+  <canvas id="snakeGame" width="400" height="400"></canvas>
+  <canvas id="breakoutGame" width="480" height="320"></canvas>
+  <canvas id="shooterGame" width="400" height="600"></canvas>
+
+  <script>
+    // ... (Semua kode JavaScript dari perbaikan sebelumnya tetap sama di sini) ...
+    // =======================
+    // Fungsi umum
+    // =======================
+    const menu = document.querySelector('.menu');
+    const backBtn = document.getElementById('backBtn');
+    let gameLoop = null;
+    let activeGame = null;
+
+    // Handler untuk event listener, didefinisikan secara global agar bisa di-remove
+    const snakeDirHandler = (e) => snakeDir(e);
+    const breakoutMouseMoveHandler = (e) => breakoutMouseMove(e); 
+    const shooterKeyDownHandler = (e) => shooterKeyDown(e);
+    const shooterKeyUpHandler = (e) => shooterKeyUp(e);
+
+    function startGame(game) {
+      if (activeGame) stopActiveGame(); 
+      
+      menu.style.display = 'none';
+      backBtn.style.display = 'inline-block';
+      activeGame = game;
+      
+      if (game === 'snake') startSnake();
+      else if (game === 'breakout') startBreakout();
+      else if (game === 'shooter') startShooter();
+    }
+
+    function goBack() {
+      stopActiveGame();
+      hideAllCanvas();
+      menu.style.display = 'flex';
+      backBtn.style.display = 'none';
+      activeGame = null;
+    }
+    
+    function stopActiveGame() {
+        if (activeGame === 'snake') {
+            clearInterval(gameLoop);
+            window.removeEventListener('keydown', snakeDirHandler);
+        } else if (activeGame === 'breakout' || activeGame === 'shooter') {
+            cancelAnimationFrame(gameLoop); 
+            if (activeGame === 'breakout') {
+                document.removeEventListener('mousemove', breakoutMouseMoveHandler);
+            } else if (activeGame === 'shooter') {
+                document.removeEventListener('keydown', shooterKeyDownHandler);
+                document.removeEventListener('keyup', shooterKeyUpHandler);
+            }
+        }
+    }
+
+    function hideAllCanvas() {
+      document.querySelectorAll('canvas').forEach(c => c.style.display = 'none');
+    }
+
+    // =======================
+    // GAME 1 : SNAKE 🐍
+    // =======================
+    const snakeCanvas = document.getElementById('snakeGame');
+    const snakeCtx = snakeCanvas.getContext('2d');
+    let box, snake, direction, food;
+
+    function startSnake() {
+      snakeCanvas.style.display = 'block';
+      box = 20;
+      snake = [{ x: 9 * box, y: 10 * box }];
+      direction = null; 
+      placeFood();
+      window.addEventListener('keydown', snakeDirHandler);
+      gameLoop = setInterval(snakeDraw, 100);
+    }
+    
+    function placeFood() {
+        do {
+            food = {
+                x: Math.floor(Math.random() * (snakeCanvas.width / box)) * box,
+                y: Math.floor(Math.random() * (snakeCanvas.height / box)) * box
+            };
+        } while (snakeCollision(food, snake));
+    }
+
+    function snakeDir(e) {
+      if (e.key === "ArrowLeft" && direction !== "RIGHT") direction = "LEFT";
+      else if (e.key === "ArrowUp" && direction !== "DOWN") direction = "UP";
+      else if (e.key === "ArrowRight" && direction !== "LEFT") direction = "RIGHT";
+      else if (e.key === "ArrowDown" && direction !== "UP") direction = "DOWN";
+      e.preventDefault();
+    }
+
+    function snakeDraw() {
+      if (!gameLoop) return; 
+
+      snakeCtx.fillStyle = "#000";
+      snakeCtx.fillRect(0, 0, snakeCanvas.width, snakeCanvas.height);
+
+      for (let i = 0; i < snake.length; i++) {
+        snakeCtx.fillStyle = (i === 0) ? "lime" : "white";
+        snakeCtx.fillRect(snake[i].x, snake[i].y, box, box);
+        snakeCtx.strokeStyle = "#111";
+        snakeCtx.strokeRect(snake[i].x, snake[i].y, box, box);
+      }
+
+      snakeCtx.fillStyle = "red";
+      snakeCtx.fillRect(food.x, food.y, box, box);
+
+      let snakeX = snake[0].x;
+      let snakeY = snake[0].y;
+      
+      if (direction === null) return; 
+
+      if (direction === "LEFT") snakeX -= box;
+      if (direction === "UP") snakeY -= box;
+      if (direction === "RIGHT") snakeX += box;
+      if (direction === "DOWN") snakeY += box;
+
+      if (snakeX === food.x && snakeY === food.y) {
+        placeFood();
+      } else {
+        snake.pop();
+      }
+
+      let newHead = { x: snakeX, y: snakeY };
+
+      if (
+        snakeX < 0 || snakeX >= snakeCanvas.width ||
+        snakeY < 0 || snakeY >= snakeCanvas.height ||
+        snakeCollision(newHead, snake)
+      ) {
+        clearInterval(gameLoop);
+        alert("Game Over! Skor Anda: " + (snake.length - 1));
+        goBack();
+        return;
+      }
+
+      snake.unshift(newHead);
+    }
+
+    function snakeCollision(head, array) {
+      for(let i = 1; i < array.length; i++) {
+        if(head.x === array[i].x && head.y === array[i].y) return true;
+      }
+      return false;
+    }
+
+    // =======================
+    // GAME 2 : BREAKOUT 🧱
+    // =======================
+    const breakoutCanvas = document.getElementById('breakoutGame');
+    const bctx = breakoutCanvas.getContext('2d');
+    let ballRadius, x, y, dx, dy, paddleHeight, paddleWidth, paddleX;
+    let brickRowCount, brickColumnCount, brickWidth, brickHeight, brickPadding, brickOffsetTop, brickOffsetLeft;
+    let bricks = [], breakoutScore;
+
+    function initBricks() {
+        bricks = [];
+        for (let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (let r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { x: 0, y: 0, status: 1 }; 
+            }
+        }
+    }
+
+    function startBreakout() {
+      breakoutCanvas.style.display = 'block';
+      
+      ballRadius = 8;
+      x = breakoutCanvas.width / 2;
+      y = breakoutCanvas.height - 30;
+      dx = 2;
+      dy = -2;
+      paddleHeight = 10;
+      paddleWidth = 75;
+      paddleX = (breakoutCanvas.width - paddleWidth) / 2;
+      breakoutScore = 0;
+      
+      brickRowCount = 3; 
+      brickColumnCount = 5; 
+      brickWidth = 75; 
+      brickHeight = 20; 
+      brickPadding = 10; 
+      brickOffsetTop = 30; 
+      brickOffsetLeft = 30;
+
+      initBricks();
+      
+      document.addEventListener("mousemove", breakoutMouseMoveHandler);
+      gameLoop = requestAnimationFrame(drawBreakout); 
+    }
+
+    function breakoutMouseMove(e) {
+      let relativeX = e.clientX - breakoutCanvas.getBoundingClientRect().left;
+      if (relativeX > 0 && relativeX < breakoutCanvas.width) {
+        paddleX = relativeX - paddleWidth / 2;
+        if (paddleX < 0) paddleX = 0;
+        if (paddleX > breakoutCanvas.width - paddleWidth) paddleX = breakoutCanvas.width - paddleWidth;
+      }
+    }
+
+    function collisionDetection() {
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          let b = bricks[c][r];
+          if (b.status === 1) {
+            if (x + ballRadius > b.x && x - ballRadius < b.x + brickWidth && 
+                y + ballRadius > b.y && y - ballRadius < b.y + brickHeight) {
+              dy = -dy;
+              b.status = 0;
+              breakoutScore++;
+              if (breakoutScore === brickRowCount * brickColumnCount) {
+                alert("Kamu menang! Skor Sempurna!");
+                goBack();
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function drawBreakout() {
+      bctx.clearRect(0, 0, breakoutCanvas.width, breakoutCanvas.height);
+      
+      for (let c = 0; c < brickColumnCount; c++) {
+        for (let r = 0; r < brickRowCount; r++) {
+          if (bricks[c][r].status === 1) {
+            let brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+            let brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+            bricks[c][r].x = brickX;
+            bricks[c][r].y = brickY;
+            bctx.fillStyle = "gold";
+            bctx.fillRect(brickX, brickY, brickWidth, brickHeight);
+          }
+        }
+      }
+      
+      if (collisionDetection()) return;
+      
+      bctx.beginPath();
+      bctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+      bctx.fillStyle = "#fff";
+      bctx.fill();
+      bctx.closePath();
+      
+      bctx.fillStyle = "#00f";
+      bctx.fillRect(paddleX, breakoutCanvas.height - paddleHeight, paddleWidth, paddleHeight);
+      
+      bctx.fillStyle = "#fff";
+      bctx.font = "16px Arial";
+      bctx.fillText("Score: " + breakoutScore, 8, 20);
+
+      if (x + dx > breakoutCanvas.width - ballRadius || x + dx < ballRadius) dx = -dx;
+      if (y + dy < ballRadius) dy = -dy;
+      
+      else if (y + dy > breakoutCanvas.height - ballRadius - paddleHeight) {
+        if (x > paddleX && x < paddleX + paddleWidth) {
+          let hitPoint = x - (paddleX + paddleWidth / 2);
+          dx = hitPoint * 0.1;
+          dy = -dy;
+        } else if (y + dy > breakoutCanvas.height - ballRadius) {
+          alert("Game Over! Skor Anda: " + breakoutScore);
+          goBack();
+          return;
+        }
+      }
+
+      x += dx;
+      y += dy;
+      gameLoop = requestAnimationFrame(drawBreakout);
+    }
+
+    // =======================
+    // GAME 3 : SHOOTER ✈️
+    // =======================
+    const shooterCanvas = document.getElementById('shooterGame');
+    const sctx = shooterCanvas.getContext('2d');
+    let ship = { x: 180, y: 550, w: 40, h: 20, speed: 5 };
+    let bullets = [];
+    let enemies = [];
+    let rightPressed = false;
+    let leftPressed = false;
+    let shooterScore = 0;
+    let enemySpawnTimer = 0;
+    const ENEMY_SPAWN_RATE = 120;
+
+    function spawnEnemy() {
+        enemies.push({ 
+            x: Math.random() * (shooterCanvas.width - 30), 
+            y: -20,
+            w: 30, 
+            h: 20, 
+            speed: 1 + Math.random() * 1.5
+        });
+    }
+
+    function startShooter() {
+      shooterCanvas.style.display = 'block';
+      bullets = [];
+      enemies = [];
+      shooterScore = 0;
+      ship.x = shooterCanvas.width / 2 - ship.w / 2;
+      rightPressed = false;
+      leftPressed = false;
+      enemySpawnTimer = 0;
+      
+      document.addEventListener("keydown", shooterKeyDownHandler);
+      document.addEventListener("keyup", shooterKeyUpHandler);
+      
+      for (let i = 0; i < 5; i++) {
+        spawnEnemy(); 
+      }
+      gameLoop = requestAnimationFrame(drawShooter);
+    }
+
+    function shooterKeyDown(e) {
+      if (e.key === "ArrowRight") rightPressed = true;
+      else if (e.key === "ArrowLeft") leftPressed = true;
+      else if (e.key === " ") {
+        e.preventDefault();
+        if (bullets.length < 5) {
+            bullets.push({ 
+                x: ship.x + ship.w / 2 - 2, 
+                y: ship.y, 
+                w: 4, 
+                h: 10, 
+                speed: 7 
+            });
+        }
+      }
+    }
+
+    function shooterKeyUp(e) {
+      if (e.key === "ArrowRight") rightPressed = false;
+      else if (e.key === "ArrowLeft") leftPressed = false;
+    }
+
+    function drawShooter() {
+      sctx.clearRect(0, 0, shooterCanvas.width, shooterCanvas.height);
+      
+      if (rightPressed && ship.x < shooterCanvas.width - ship.w) ship.x += ship.speed;
+      if (leftPressed && ship.x > 0) ship.x -= ship.speed;
+
+      sctx.fillStyle = "lime";
+      sctx.fillRect(ship.x, ship.y, ship.w, ship.h);
+      
+      sctx.fillStyle = "yellow";
+      for (let i = bullets.length - 1; i >= 0; i--) {
+          let b = bullets[i];
+          b.y -= b.speed;
+          sctx.fillRect(b.x, b.y, b.w, b.h);
+          if (b.y < 0) {
+              bullets.splice(i, 1);
+          }
+      }
+      
+      sctx.fillStyle = "red";
+      for (let ei = enemies.length - 1; ei >= 0; ei--) {
+          let en = enemies[ei];
+          en.y += en.speed;
+          sctx.fillRect(en.x, en.y, en.w, en.h);
+          
+          for (let bi = bullets.length - 1; bi >= 0; bi--) {
+              let b = bullets[bi];
+              if (b.x < en.x + en.w && b.x + b.w > en.x && b.y < en.y + en.h && b.y + b.h > en.y) {
+                  enemies.splice(ei, 1);
+                  bullets.splice(bi, 1);
+                  shooterScore++;
+                  break; 
+              }
+          }
+          
+          if (en.y > shooterCanvas.height) {
+              alert("Game Over! Skor Anda: " + shooterScore);
+              goBack();
+              return;
+          }
+          
+          if (ship.x < en.x + en.w && ship.x + ship.w > en.x && ship.y < en.y + en.h && ship.y + ship.h > en.y) {
+             alert("Game Over! Tabrakan! Skor Anda: " + shooterScore);
+              goBack();
+              return;
+          }
+      }
+      
+      enemySpawnTimer++;
+      if (enemySpawnTimer >= ENEMY_SPAWN_RATE) {
+          spawnEnemy();
+          enemySpawnTimer = 0;
+      }
+      
+      sctx.fillStyle = "white";
+      sctx.font = "16px Arial";
+      sctx.fillText("Score: " + shooterScore, 10, 20);
+
+      gameLoop = requestAnimationFrame(drawShooter);
+    }
+  </script>
+</body>
+</html>
