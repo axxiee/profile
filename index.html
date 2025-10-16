@@ -40,20 +40,15 @@
       color: black;
       box-shadow: 0 0 10px gold;
     }
-    /* PERBAIKAN UTAMA DI SINI */
     canvas {
       background: #000;
-      display: none; /* Awalnya disembunyikan */
+      display: block !important;
+      margin-left: auto;
+      margin-right: auto;
       margin-top: 20px;
       border: 2px solid gold;
       box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
-      
-      /* Tambahan untuk pemusatan: */
-      display: block !important; /* Wajib diatur ulang ke 'block' */
-      margin-left: auto;        /* Pusatkan secara horizontal */
-      margin-right: auto;       /* Pusatkan secara horizontal */
-      
-      /* Catatan: 'display: none' di JavaScript akan menimpa ini saat tidak aktif */
+      /* Note: display: none di JS akan menimpa ini saat tidak aktif */
     }
     #backBtn {
       display: none;
@@ -64,6 +59,20 @@
         background: darkred;
         color: white;
         box-shadow: 0 0 10px darkred;
+    }
+    /* STYLE UNTUK GAME OVER & RESTART BARU */
+    .game-status {
+        display: none; /* Sembunyikan secara default */
+        margin-top: 10px;
+        color: white;
+    }
+    .game-status button {
+        background: #007bff;
+    }
+    .game-status button:hover {
+        background: #0056b3;
+        color: white;
+        box-shadow: none;
     }
   </style>
 </head>
@@ -77,27 +86,59 @@
   <button id="backBtn" onclick="goBack()">⬅ Kembali ke Menu</button>
 
   <canvas id="snakeGame" width="400" height="400"></canvas>
+  <div id="snakeStatus" class="game-status">
+    <p>Skor: <span id="snakeScoreDisplay">0</span></p>
+    <div id="snakeGameOver" style="display: none;">
+      <h2>GAME OVER!</h2>
+      <button onclick="startGame('snake')">🔁 Restart</button>
+      <button onclick="goBack()">🏠 Keluar Game</button>
+    </div>
+  </div>
+
   <canvas id="breakoutGame" width="480" height="320"></canvas>
+  <div id="breakoutStatus" class="game-status">
+    <div id="breakoutGameOver" style="display: none;">
+      <h2>GAME OVER!</h2>
+      <button onclick="startGame('breakout')">🔁 Restart</button>
+      <button onclick="goBack()">🏠 Keluar Game</button>
+    </div>
+  </div>
+
   <canvas id="shooterGame" width="400" height="600"></canvas>
+  <div id="shooterStatus" class="game-status">
+    <div id="shooterGameOver" style="display: none;">
+      <h2>GAME OVER!</h2>
+      <button onclick="startGame('shooter')">🔁 Restart</button>
+      <button onclick="goBack()">🏠 Keluar Game</button>
+    </div>
+  </div>
 
   <script>
-    // ... (Semua kode JavaScript dari perbaikan sebelumnya tetap sama di sini) ...
     // =======================
-    // Fungsi umum
+    // Fungsi umum & Elemen Status
     // =======================
     const menu = document.querySelector('.menu');
     const backBtn = document.getElementById('backBtn');
     let gameLoop = null;
     let activeGame = null;
 
-    // Handler untuk event listener, didefinisikan secara global agar bisa di-remove
+    // Elemen Status/Score/GameOver
+    const gameStatuses = {
+        snake: { status: document.getElementById('snakeStatus'), over: document.getElementById('snakeGameOver'), scoreDisplay: document.getElementById('snakeScoreDisplay') },
+        breakout: { status: document.getElementById('breakoutStatus'), over: document.getElementById('breakoutGameOver') },
+        shooter: { status: document.getElementById('shooterStatus'), over: document.getElementById('shooterGameOver') }
+    };
+
+    // Handler untuk event listener, didefinisikan secara global
     const snakeDirHandler = (e) => snakeDir(e);
-    const breakoutMouseMoveHandler = (e) => breakoutMouseMove(e); 
+    const breakoutMouseMoveHandler = (e) => breakoutMouseMove(e);
     const shooterKeyDownHandler = (e) => shooterKeyDown(e);
     const shooterKeyUpHandler = (e) => shooterKeyUp(e);
 
     function startGame(game) {
       if (activeGame) stopActiveGame(); 
+      hideAllCanvas();
+      hideAllStatus(); // Pastikan semua status disembunyikan
       
       menu.style.display = 'none';
       backBtn.style.display = 'inline-block';
@@ -111,12 +152,13 @@
     function goBack() {
       stopActiveGame();
       hideAllCanvas();
+      hideAllStatus();
       menu.style.display = 'flex';
       backBtn.style.display = 'none';
       activeGame = null;
     }
     
-    function stopActiveGame() {
+    function stopActiveGame(isGameOver = false, message = null) {
         if (activeGame === 'snake') {
             clearInterval(gameLoop);
             window.removeEventListener('keydown', snakeDirHandler);
@@ -129,24 +171,44 @@
                 document.removeEventListener('keyup', shooterKeyUpHandler);
             }
         }
+        
+        if (isGameOver) {
+             const statusEl = gameStatuses[activeGame];
+             // Tampilkan overlay Game Over dengan pesan
+             statusEl.over.style.display = 'block';
+             if (message) {
+                 statusEl.over.querySelector('h2').textContent = message;
+             }
+        }
     }
 
     function hideAllCanvas() {
       document.querySelectorAll('canvas').forEach(c => c.style.display = 'none');
     }
+    
+    function hideAllStatus() {
+       document.querySelectorAll('.game-status').forEach(s => s.style.display = 'none');
+       document.querySelectorAll('.game-status > div').forEach(d => d.style.display = 'none'); // Sembunyikan semua pesan Game Over
+    }
+
 
     // =======================
     // GAME 1 : SNAKE 🐍
     // =======================
     const snakeCanvas = document.getElementById('snakeGame');
     const snakeCtx = snakeCanvas.getContext('2d');
-    let box, snake, direction, food;
+    let box, snake, direction, food, snakeScore;
 
     function startSnake() {
       snakeCanvas.style.display = 'block';
+      gameStatuses.snake.status.style.display = 'block'; // Tampilkan status
+      gameStatuses.snake.over.style.display = 'none'; // Sembunyikan pesan Game Over
+      
       box = 20;
       snake = [{ x: 9 * box, y: 10 * box }];
       direction = null; 
+      snakeScore = 0;
+      gameStatuses.snake.scoreDisplay.textContent = snakeScore; // Reset display score
       placeFood();
       window.addEventListener('keydown', snakeDirHandler);
       gameLoop = setInterval(snakeDraw, 100);
@@ -197,6 +259,8 @@
 
       if (snakeX === food.x && snakeY === food.y) {
         placeFood();
+        snakeScore++; // Tambah skor
+        gameStatuses.snake.scoreDisplay.textContent = snakeScore; // Update live score
       } else {
         snake.pop();
       }
@@ -208,9 +272,7 @@
         snakeY < 0 || snakeY >= snakeCanvas.height ||
         snakeCollision(newHead, snake)
       ) {
-        clearInterval(gameLoop);
-        alert("Game Over! Skor Anda: " + (snake.length - 1));
-        goBack();
+        stopActiveGame(true, `GAME OVER! Skor Akhir: ${snakeScore}`);
         return;
       }
 
@@ -233,6 +295,13 @@
     let brickRowCount, brickColumnCount, brickWidth, brickHeight, brickPadding, brickOffsetTop, brickOffsetLeft;
     let bricks = [], breakoutScore;
 
+    // Fungsi untuk menampilkan live score di canvas (karena tidak ada elemen skor terpisah)
+    function drawBreakoutScore() {
+        bctx.fillStyle = "#fff";
+        bctx.font = "16px Arial";
+        bctx.fillText("Score: " + breakoutScore, 8, 20);
+    }
+
     function initBricks() {
         bricks = [];
         for (let c = 0; c < brickColumnCount; c++) {
@@ -245,6 +314,8 @@
 
     function startBreakout() {
       breakoutCanvas.style.display = 'block';
+      gameStatuses.breakout.status.style.display = 'block';
+      gameStatuses.breakout.over.style.display = 'none';
       
       ballRadius = 8;
       x = breakoutCanvas.width / 2;
@@ -290,9 +361,8 @@
               b.status = 0;
               breakoutScore++;
               if (breakoutScore === brickRowCount * brickColumnCount) {
-                alert("Kamu menang! Skor Sempurna!");
-                goBack();
-                return true;
+                stopActiveGame(true, "SELAMAT! Kamu menang!");
+                return true; 
               }
             }
           }
@@ -328,10 +398,8 @@
       bctx.fillStyle = "#00f";
       bctx.fillRect(paddleX, breakoutCanvas.height - paddleHeight, paddleWidth, paddleHeight);
       
-      bctx.fillStyle = "#fff";
-      bctx.font = "16px Arial";
-      bctx.fillText("Score: " + breakoutScore, 8, 20);
-
+      drawBreakoutScore(); // Live score
+      
       if (x + dx > breakoutCanvas.width - ballRadius || x + dx < ballRadius) dx = -dx;
       if (y + dy < ballRadius) dy = -dy;
       
@@ -341,8 +409,7 @@
           dx = hitPoint * 0.1;
           dy = -dy;
         } else if (y + dy > breakoutCanvas.height - ballRadius) {
-          alert("Game Over! Skor Anda: " + breakoutScore);
-          goBack();
+          stopActiveGame(true, `GAME OVER! Skor Akhir: ${breakoutScore}`);
           return;
         }
       }
@@ -366,6 +433,13 @@
     let enemySpawnTimer = 0;
     const ENEMY_SPAWN_RATE = 120;
 
+    // Fungsi untuk menampilkan live score di canvas
+    function drawShooterScore() {
+        sctx.fillStyle = "white";
+        sctx.font = "16px Arial";
+        sctx.fillText("Score: " + shooterScore, 10, 20);
+    }
+
     function spawnEnemy() {
         enemies.push({ 
             x: Math.random() * (shooterCanvas.width - 30), 
@@ -378,6 +452,9 @@
 
     function startShooter() {
       shooterCanvas.style.display = 'block';
+      gameStatuses.shooter.status.style.display = 'block';
+      gameStatuses.shooter.over.style.display = 'none';
+      
       bullets = [];
       enemies = [];
       shooterScore = 0;
@@ -453,14 +530,12 @@
           }
           
           if (en.y > shooterCanvas.height) {
-              alert("Game Over! Skor Anda: " + shooterScore);
-              goBack();
+              stopActiveGame(true, `GAME OVER! Musuh Lolos. Skor Akhir: ${shooterScore}`);
               return;
           }
           
           if (ship.x < en.x + en.w && ship.x + ship.w > en.x && ship.y < en.y + en.h && ship.y + ship.h > en.y) {
-             alert("Game Over! Tabrakan! Skor Anda: " + shooterScore);
-              goBack();
+             stopActiveGame(true, `GAME OVER! Tabrakan. Skor Akhir: ${shooterScore}`);
               return;
           }
       }
@@ -471,9 +546,7 @@
           enemySpawnTimer = 0;
       }
       
-      sctx.fillStyle = "white";
-      sctx.font = "16px Arial";
-      sctx.fillText("Score: " + shooterScore, 10, 20);
+      drawShooterScore(); // Live score
 
       gameLoop = requestAnimationFrame(drawShooter);
     }
